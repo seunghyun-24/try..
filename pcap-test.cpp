@@ -130,7 +130,7 @@ int main(int argc, char* argv[]) {
         print_info(ethernet_h->ether_dhost, ip_h->ip_dst, tcp_h->th_dport);
         
         print_data(packet, sizeof(struct libnet_ethernet_hdr), ip_h->ip_hl, tcp_h -> th_off);
-        //print_data(packet, ip_h->ip_len, ip_h->ip_hl*4 , tcp_h->th_off*4);
+        
         /* */
 	}
 
