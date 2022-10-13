@@ -1,0 +1,18 @@
+void Widget::on_pbReset_clicked() {
+    QMessageBox msg;
+  
+    int Coin = this->money;
+    int n100[1] = {0}, n50[1] = {0};
+    
+    QString refund;
+
+    while(Coin >= 100) n100[0]++, Coin -= 100;
+    while(Coin >= 50) n50[0]++, Coin -= 50;
+
+    refund += "100 = " + QString::number(n100[0]) + ", 50 = " + Qstring::number(n50[0]);
+    
+    this->money = 0;
+    ui->lcdNumber->display(money);
+    
+    msg.information(this, "Reset", refund);
+}
