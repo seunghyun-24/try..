@@ -5,6 +5,7 @@
 #include <linux/types.h>
 #include <linux/netfilter.h>		/* for NF_ACCEPT */
 #include <errno.h>
+#include <iso686.h>
 
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
@@ -14,6 +15,26 @@
 #include <string.h>
 
 char* blocked; //일단 혹시 모르니까.. 뭔가 이상함. 엥..
+
+bool parseHTTP(char* payload) {
+	
+	//Host: 를 찾고... \r\n
+	const char* method = "Host: "
+	char* ptr = strtok(payload, "\r\n");
+	if(ptr == NULL) return false;
+
+	ptr = strtok(NULL, "\r\n");
+	
+	if(ptr == NULL) return false;
+	
+	ptr = strstr(ptr, blocked);
+	
+	if(ptr == NULL) return false;
+	
+	if(strcmp(ptr, blocked) != 0) return false;
+	
+	return true;
+}
 
 bool check(unsigned char* data) {
 	
@@ -26,14 +47,26 @@ bool check(unsigned char* data) {
 	ipLen = (ipHeader->ip_hl)*4;
 
 	if (ipHeader->ip_p != IPPROTO_TCP)
-		printf("Not TCP");
+		//printf("Not TCP\n");
+		puts("Not TCP");
 	else {
-        // ip 체크할 거 없나?
 
 		tcpHeader = (struct tcphdr*)(data + ipLen);
+		
+		//check http
+		if (ntohl(tcpHeader->th_dport) != 80 && ntohl(tcpHeader->th_sport) != 80) {
+			//printf("Not HTTP\n");
+			puts("Not HTTP");
+			return false;
+		}
+
 		tcpOffSet = (tcpHeader->th_off)*4;
 
-        //안에서 찾아낸 값이랑 data랑 동일하면 true 반환
+		char* payload = (char *)(data + ipLen + tcpOffSet);
+		//안에서 찾아낸 값이랑 data랑 동일하면 true 반환
+		
+		if(parseHTTP(payload)) return true;
+		else false;
     }
     return false;
 }
@@ -181,7 +214,7 @@ int main(int argc, char **argv)
 			continue;
 		}
 
-		perror("recv failed");
+		perror("recv failed\n");
 		break;
 	}
 
