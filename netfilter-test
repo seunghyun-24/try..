@@ -26,7 +26,7 @@ bool check(unsigned char* data) {
 	ipHeader = (struct ip*)(data);
 	ipLen = (ipHeader->ip_hl)*4;
 
-	if (ipHeader->ip_p != //TCP가 아니면)
+	if (ipHeader->ip_p != 0x06 //TCP가 아니면)
 		printf("Not TCP");
 	else {
         // ip 체크할 거 없나?
