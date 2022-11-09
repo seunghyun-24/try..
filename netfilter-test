@@ -13,7 +13,6 @@
 #include <netinet/tcp.h>
 #include <string.h>
 
-bool flag = false;
 char* blocked; //일단 혹시 모르니까.. 뭔가 이상함. 엥..
 
 bool check(unsigned char* data) {
@@ -90,8 +89,6 @@ static u_int32_t print_pkt (struct nfq_data *tb)
 	if (ret >= 0) {
         // 여기에서 뭘 넣어줬었으니까
 		printf("payload_len=%d\n", ret);
-
-		flag = check(data);
 	}
 
 	fputc('\n', stdout);
@@ -99,15 +96,24 @@ static u_int32_t print_pkt (struct nfq_data *tb)
 	return id;
 }
 
+static u_int32_t findingID(struct nfq_data *tb) {
+	struct nfqnl_msg_packet_hdr *ph;
+	ph = nfq_get_msg_packet_hdr(tb);
+	
+	if (ph) return ntohl(ph->packet_id);
+	else return -1;
+}
 
 static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 	      struct nfq_data *nfa, void *data)
 {
-	u_int32_t id = print_pkt(nfa);
-	printf("entering callback\n");
-
-	if (flag) return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
-    else return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
+	//u_int32_t id = print_pkt(nfa);
+	//printf("entering callback\n");
+	
+	findingID(nfa);
+	
+	if (check(data)) return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
+    	else return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
 	
 }
 
