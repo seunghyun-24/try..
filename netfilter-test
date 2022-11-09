@@ -115,7 +115,7 @@ int main(int argc, char **argv)
 {
 	if (2 != argc) {
 		printf("syntax : syntax : netfilter-test <host>\n");
-        printf("sample : sample : netfilter-test test.gilgil.net\n");
+        	printf("sample : sample : netfilter-test test.gilgil.net\n");
 		return -1;
 	}
 
